@@ -1,6 +1,12 @@
 package mr
 
-import "log"
+import (
+	"errors"
+	"fmt"
+	"log"
+	"sync"
+	"time"
+)
 import "net"
 import "os"
 import "net/rpc"
@@ -8,22 +14,160 @@ import "net/http"
 
 
 type Coordinator struct {
-	// Your definitions here.
-
+	mu sync.Mutex          // Lock to protect shared access
+	files []string
+	nReduce int
+	mapTasksCompleted []bool
+	reduceTasksCompleted []bool
 }
 
-// Your code here -- RPC handlers for the worker to call.
+//
+// RPC handler to assign a task to a worker
+//
+func (c *Coordinator) AssignWork(args *SolicitWorkArgs, reply *SolicitWorkReply) error {
+	c.mu.Lock()
 
-//
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
-	return nil
+	if c.mustWaitForMapTasksToComplete() {
+		c.mu.Unlock()
+		return nil
+	}
+
+	if !c.intermediateFilesExist() {
+		reply.WorkType = "map"
+		mapTask := c.chooseMapTask()
+		reply.TaskNumber = mapTask
+		reply.Filename = c.files[mapTask]
+		reply.TotalTasks = c.nReduce
+
+		c.mapTasksCompleted[mapTask] = true
+		c.mu.Unlock()
+
+		go c.ensureMapTaskIsCompleted(mapTask, c.nReduce)
+
+		return nil
+	}
+
+	if c.mustWaitForReduceTasksToComplete() {
+		c.mu.Unlock()
+		return nil
+	}
+
+	if !c.outputFilesExist() {
+		reply.WorkType = "reduce"
+		reduceTask := c.chooseReduceTask()
+		reply.TaskNumber = reduceTask
+		reply.TotalTasks = len(c.mapTasksCompleted)
+
+		c.reduceTasksCompleted[reduceTask] = true
+		c.mu.Unlock()
+
+		go c.ensureReduceTaskIsCompleted(reduceTask)
+
+		return nil
+	}
+
+	return errors.New("MapReduce is done")
 }
 
+func (c * Coordinator) mustWaitForMapTasksToComplete() bool {
+	return !c.intermediateFilesExist() && c.allMapTasksStarted()
+}
+
+func (c * Coordinator) chooseMapTask() int {
+	return c.chooseAvailableTask(c.mapTasksCompleted)
+}
+
+func (c * Coordinator) allMapTasksStarted() bool {
+	return c.chooseMapTask() == -1
+}
+
+func (c * Coordinator) intermediateFilesExist() bool {
+	for i := 0; i < len(c.files); i++ {
+		for j := 0; j < c.nReduce; j++ {
+			filename := fmt.Sprintf("mr-%v-%v", i, j)
+			if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func (c *Coordinator) ensureMapTaskIsCompleted(taskNumber int, nReduce int) {
+	filename := fmt.Sprintf("mr-%v-%v", taskNumber, nReduce)
+	c.ensureTaskIsCompleted(
+		taskNumber,
+		c.mapTasksCompleted,
+		filename)
+}
+
+func (c * Coordinator) mustWaitForReduceTasksToComplete() bool {
+	return !c.outputFilesExist() && c.allReduceTasksStarted()
+}
+
+func (c *Coordinator) chooseReduceTask() int {
+	return c.chooseAvailableTask(c.reduceTasksCompleted)
+}
+
+func (c *Coordinator) allReduceTasksStarted() bool {
+	return c.chooseReduceTask() == -1
+}
+
+func (c * Coordinator) outputFilesExist() bool {
+	for i := 0; i < c.nReduce; i++ {
+		filename := fmt.Sprintf("mr-out-%v", i)
+		if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (c *Coordinator) ensureReduceTaskIsCompleted(taskNumber int) {
+	filename := fmt.Sprintf("mr-out-%v", taskNumber)
+	c.ensureTaskIsCompleted(
+		taskNumber,
+		c.reduceTasksCompleted,
+		filename)
+}
+
+//
+// Wait and confirm that the task was completed,
+// in case the worker crashed or was unable to complete the task
+//
+func (c *Coordinator) ensureTaskIsCompleted(
+	taskNumber int,
+	tasks []bool,
+	filename string) {
+
+	time.Sleep(15 * time.Second)
+
+	c.mu.Lock()
+	if !fileExists(filename) {
+		tasks[taskNumber] = false
+	}
+	c.mu.Unlock()
+}
+
+func (c *Coordinator) chooseAvailableTask(tasks []bool) int {
+	for i, isCompleted := range tasks {
+		if !isCompleted {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func fileExists(filename string) bool {
+	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+
+	return true
+}
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -46,12 +190,7 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	ret := false
-
-	// Your code here.
-
-
-	return ret
+	return c.outputFilesExist()
 }
 
 //
@@ -62,9 +201,18 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 
-	// Your code here.
+	c.files = files
+	c.nReduce = nReduce
 
+	for i := 0; i < len(c.files); i++ {
+		c.mapTasksCompleted = append(c.mapTasksCompleted, false)
+	}
+
+	for i := 0; i < nReduce; i++ {
+		c.reduceTasksCompleted = append(c.reduceTasksCompleted, false)
+	}
 
 	c.server()
 	return &c
 }
+
