@@ -24,3 +24,19 @@ and to run the test suite `x` times in a row:
 ```$xslt
 $ bash test-mr-many.sh x
 ```
+
+## Lab 2: Raft
+
+[Lab Instructions](https://pdos.csail.mit.edu/6.824/labs/lab-raft.html)
+
+In this lab I modified `raft/raft.go` and `raft/rpc.go`.
+
+![raft lab tests png](raft_lab_tests.png)
+
+Use the following commands to run the test suite:
+
+```$xslt
+$ git clone https://github.com/NolanJMcCafferty/MIT-6.5840-Distribute-Systems.git
+$ cd ~/6.5840/src/raft
+$ go test
+```
