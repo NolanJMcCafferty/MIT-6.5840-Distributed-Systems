@@ -77,6 +77,7 @@ type Raft struct {
 const BaseWaitInterval = 10 * time.Millisecond
 const ElectionTimeoutMin = 50
 const ElectionTimeoutMax = 300
+const HeartbeatInterval = 100 * time.Millisecond
 
 // return currentTerm and whether this server
 // believes it is the leader.
@@ -115,6 +116,12 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		nextEntry := LogEntry{command, term, index}
 		rf.log = append(rf.log, nextEntry)
 		rf.persist()
+
+		for s, _ := range rf.peers {
+			if s != rf.me {
+				go rf.sendAppendEntry(s)
+			}
+		}
 	}
 
 	return index, term, isLeader
@@ -346,6 +353,10 @@ func (rf *Raft) Snapshot(
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	if index <= rf.indexOffset {
+		return
+	}
+
 	lastSnapshotEntry := rf.log[index - rf.indexOffset - 1]
 
 	rf.snapshot = snapshot
@@ -383,18 +394,9 @@ func (rf *Raft) InstallSnapshot(
 	rf.commitIndex = rf.indexOffset
 	rf.lastApplied = rf.indexOffset
 
-	matchingEntry := false
-	for i, entry := range rf.log {
-		if entry.CommandIndex == rf.snapshotLastIncludedIndex &&
-			entry.CommandTerm == rf.snapshotLastIncludedTerm {
-			rf.log = rf.log[i:]
-			matchingEntry = true
-		}
-	}
+	rf.log = nil
 
-	if !matchingEntry {
-		rf.log = nil
-	}
+	rf.persist()
 
 	newMessage := ApplyMsg{
 		SnapshotValid: true,
@@ -404,8 +406,6 @@ func (rf *Raft) InstallSnapshot(
 	}
 
 	rf.applyCh <- newMessage
-
-	rf.persist()
 }
 
 func (rf *Raft) snapshotAlreadyUpToDate(lastIndexInLeaderSnapshot int) bool {
@@ -466,6 +466,8 @@ func Make(
 
 // periodically check if there are new committed entries to send to the service
 func (rf *Raft) monitorCommittedEntries() {
+	const WaitInterval = 1 * time.Millisecond
+
 	for !rf.killed() {
 		rf.mu.Lock()
 
@@ -477,7 +479,7 @@ func (rf *Raft) monitorCommittedEntries() {
 
 		rf.mu.Unlock()
 
-		time.Sleep(BaseWaitInterval)
+		time.Sleep(WaitInterval)
 	}
 }
 
@@ -493,13 +495,13 @@ func (rf *Raft) sendCommittedEntry(index int) {
 
 // periodically check if a leader election should be started
 func (rf *Raft) monitorElectionStatus() {
-	const TickerInterval = 300 * time.Millisecond
+	const BaseElectionTimeout = 300 * time.Millisecond
 
 	for !rf.killed() {
 		rand.Seed(time.Now().UnixNano())
 
 		startTime := time.Now()
-		time.Sleep(TickerInterval)
+		time.Sleep(BaseElectionTimeout)
 
 		rf.mu.Lock()
 		if rf.lastRecieved.Before(startTime) && !rf.isLeader() {
@@ -507,8 +509,8 @@ func (rf *Raft) monitorElectionStatus() {
 		}
 		rf.mu.Unlock()
 
-		timeoutMs := ElectionTimeoutMin + (rand.Int63() % ElectionTimeoutMax)
-		time.Sleep(time.Duration(timeoutMs) * time.Millisecond)
+		randTimeoutMs := ElectionTimeoutMin + (rand.Int63() % ElectionTimeoutMax)
+		time.Sleep(time.Duration(randTimeoutMs) * time.Millisecond)
 	}
 }
 
@@ -649,10 +651,8 @@ func (rf *Raft) sendHeartbeatsToFollowers() {
 	for s, _ := range rf.peers {
 		if s != rf.me {
 			go func(server int) {
-				const HeartbeatInterval = 100 * time.Millisecond
-
 				rf.mu.Lock()
-				for rf.isLeader() {
+				for !rf.killed() && rf.isLeader() {
 					go rf.sendAppendEntry(server)
 
 					rf.mu.Unlock()
@@ -725,7 +725,6 @@ func (rf *Raft) sendAppendEntry(server int) {
 		rf.mu.Unlock()
 
 	} else { // retry AppendEntries with lower nextIndex
-
 		if reply.LogLength > 0 {
 			if reply.LogLength < rf.snapshotLastIncludedIndex {
 				go rf.sendInstallSnapshot(server)

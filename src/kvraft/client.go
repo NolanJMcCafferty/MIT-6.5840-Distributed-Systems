@@ -1,14 +1,21 @@
 package kvraft
 
-import "6.5840/labrpc"
+import (
+	"6.5840/labrpc"
+	"time"
+)
 import "crypto/rand"
 import "math/big"
 
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
-	// You will have to modify this struct.
+	id int64
+	requestNum int
+	currentLeader int
 }
+
+const WaitInterval = 10 * time.Millisecond
 
 func nrand() int64 {
 	max := big.NewInt(int64(1) << 62)
@@ -20,7 +27,9 @@ func nrand() int64 {
 func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
-	// You'll have to add code here.
+	ck.id = nrand()
+	ck.requestNum = 1
+
 	return ck
 }
 
@@ -35,9 +44,28 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) Get(key string) string {
+	ck.requestNum++
 
-	// You will have to modify this function.
-	return ""
+	args := GetArgs{
+		key,
+		ck.id,
+		ck.requestNum,
+	}
+
+	serverIndex := ck.currentLeader
+	for {
+		reply := GetReply{}
+
+		ok := ck.servers[serverIndex % len(ck.servers)].Call("KVServer.Get", &args, &reply)
+
+		if ok && reply.Err == OK {
+			ck.currentLeader = serverIndex % len(ck.servers)
+			return reply.Value
+		}
+
+		serverIndex++
+		time.Sleep(WaitInterval)
+	}
 }
 
 // shared by Put and Append.
@@ -49,7 +77,30 @@ func (ck *Clerk) Get(key string) string {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	// You will have to modify this function.
+	ck.requestNum++
+
+	args := PutAppendArgs{
+		key,
+		value,
+		op,
+		ck.id,
+		ck.requestNum,
+	}
+
+	serverIndex := ck.currentLeader
+	for {
+		reply := PutAppendReply{}
+
+		ok := ck.servers[serverIndex % len(ck.servers)].Call("KVServer.PutAppend", &args, &reply)
+
+		if ok && reply.Err == OK {
+			ck.currentLeader = serverIndex % len(ck.servers)
+			return
+		}
+
+		serverIndex++
+		time.Sleep(WaitInterval)
+	}
 }
 
 func (ck *Clerk) Put(key string, value string) {

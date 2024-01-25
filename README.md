@@ -15,7 +15,7 @@ Use the following commands to run the test suite:
 
 ```$xslt
 $ git clone https://github.com/NolanJMcCafferty/MIT-6.5840-Distribute-Systems.git
-$ cd ~/6.5840/src/main
+$ cd MIT-6.5840-Distribute-Systems/src/main
 $ bash test-mr.sh
 ```
 
@@ -37,6 +37,22 @@ Use the following commands to run the test suite:
 
 ```$xslt
 $ git clone https://github.com/NolanJMcCafferty/MIT-6.5840-Distribute-Systems.git
-$ cd ~/6.5840/src/raft
+$ cd MIT-6.5840-Distribute-Systems/src/raft
+$ go test
+```
+
+## Lab 3: Fault-tolerant Key/Value Service
+
+[Lab Instructions](https://pdos.csail.mit.edu/6.824/labs/lab-kvraft.html)
+
+In this lab I modified `kvraft/client.go`, `kvraft/server.go`, and `kvraft/common.go` to complete the Key/Value service implementation.
+
+![kvraft_lab_tests.png](kvraft_lab_tests.png)
+
+Use the following commands to run the test suite:
+
+```$xslt
+$ git clone https://github.com/NolanJMcCafferty/MIT-6.5840-Distribute-Systems.git
+$ cd MIT-6.5840-Distribute-Systems/src/kvraft
 $ go test
 ```
