@@ -4,15 +4,21 @@ package shardctrler
 // Shardctrler clerk.
 //
 
-import "6.5840/labrpc"
+import (
+	"6.5840/labrpc"
+)
 import "time"
 import "crypto/rand"
 import "math/big"
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
-	// Your data here.
+	id int64
+	requestNum int
+	currentLeader int
 }
+
+const RequestWaitInterval = 100 * time.Millisecond
 
 func nrand() int64 {
 	max := big.NewInt(int64(1) << 62)
@@ -24,14 +30,20 @@ func nrand() int64 {
 func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
-	// Your code here.
+	ck.id = nrand()
+	ck.requestNum = 1
+
 	return ck
 }
 
 func (ck *Clerk) Query(num int) Config {
+	ck.requestNum++
+
 	args := &QueryArgs{}
-	// Your code here.
+	args.ClientId = ck.id
+	args.RequestNum = ck.requestNum
 	args.Num = num
+
 	for {
 		// try each known server.
 		for _, srv := range ck.servers {
@@ -41,13 +53,16 @@ func (ck *Clerk) Query(num int) Config {
 				return reply.Config
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(RequestWaitInterval)
 	}
 }
 
 func (ck *Clerk) Join(servers map[int][]string) {
+	ck.requestNum++
+
 	args := &JoinArgs{}
-	// Your code here.
+	args.ClientId = ck.id
+	args.RequestNum = ck.requestNum
 	args.Servers = servers
 
 	for {
@@ -59,13 +74,16 @@ func (ck *Clerk) Join(servers map[int][]string) {
 				return
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(RequestWaitInterval)
 	}
 }
 
 func (ck *Clerk) Leave(gids []int) {
+	ck.requestNum++
+
 	args := &LeaveArgs{}
-	// Your code here.
+	args.ClientId = ck.id
+	args.RequestNum = ck.requestNum
 	args.GIDs = gids
 
 	for {
@@ -77,13 +95,16 @@ func (ck *Clerk) Leave(gids []int) {
 				return
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(RequestWaitInterval)
 	}
 }
 
 func (ck *Clerk) Move(shard int, gid int) {
+	ck.requestNum++
+
 	args := &MoveArgs{}
-	// Your code here.
+	args.ClientId = ck.id
+	args.RequestNum = ck.requestNum
 	args.Shard = shard
 	args.GID = gid
 
@@ -96,6 +117,6 @@ func (ck *Clerk) Move(shard int, gid int) {
 				return
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(RequestWaitInterval)
 	}
 }

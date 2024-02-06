@@ -56,3 +56,19 @@ $ git clone https://github.com/NolanJMcCafferty/MIT-6.5840-Distribute-Systems.gi
 $ cd MIT-6.5840-Distribute-Systems/src/kvraft
 $ go test
 ```
+
+## Lab 4A: Sharded Key/Value Service
+
+[Lab Instructions](https://pdos.csail.mit.edu/6.824/labs/lab-shard.html)
+
+In this lab I modified `shardctrler/client.go`, `shardctrler/server.go`, and `shardctrlr/common.go` to complete the Shard Controller implementation.
+
+![shardkv_lab_tests.png](shardkv_lab_tests.png)
+
+Use the following commands to run the test suite:
+
+```$xslt
+$ git clone https://github.com/NolanJMcCafferty/MIT-6.5840-Distribute-Systems.git
+$ cd MIT-6.5840-Distribute-Systems/src/shardctrler
+$ go test
+```

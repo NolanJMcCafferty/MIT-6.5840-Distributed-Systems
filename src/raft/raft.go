@@ -299,7 +299,7 @@ func (rf *Raft) AppendEntries(
 
 		relativeIndex := entry.CommandIndex - rf.indexOffset
 		if relativeIndex > 0 &&
-			(len(rf.log) < relativeIndex || rf.log[relativeIndex - 1] != newEntry) {
+			len(rf.log) < relativeIndex {
 			rf.log = append(rf.log, newEntry)
 			lastNewEntryIndex = newEntry.CommandIndex
 		}

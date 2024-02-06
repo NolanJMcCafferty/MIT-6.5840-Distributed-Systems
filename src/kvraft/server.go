@@ -114,15 +114,13 @@ func(kv *KVServer) applyOp(op Op) Err {
 			return ErrWrongLeader
 		}
 
-		kv.mu.Lock()
-
 		currentTerm, stillLeader := kv.rf.GetState()
 
 		if !stillLeader || currentTerm != term {
-			kv.mu.Unlock()
 			return ErrWrongLeader
 		}
 
+		kv.mu.Lock()
 		if result, exists := kv.requests[op.ClientId] ; exists && result.RequestNum == op.RequestNum {
 			kv.mu.Unlock()
 			break
